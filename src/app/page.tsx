@@ -61,7 +61,7 @@ export default function Home() {
         setHooks(["Something went wrong."]);
       }
 
-    } catch (_error) {
+    } catch {
       setHooks(["Error generating hooks."]);
     } finally {
       console.log("Loading false");
