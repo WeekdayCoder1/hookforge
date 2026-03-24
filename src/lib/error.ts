@@ -197,6 +197,8 @@ interface LogContext {
   duration?: number;
   eventId?: string;
   eventType?: string;
+  authenticatedUser?: string;
+  requestedUser?: string;
 }
 
 /**
