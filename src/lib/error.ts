@@ -195,6 +195,8 @@ interface LogContext {
   ip?: string;
   timestamp?: string;
   duration?: number;
+  eventId?: string;
+  eventType?: string;
 }
 
 /**
