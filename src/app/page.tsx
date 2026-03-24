@@ -3,6 +3,7 @@
 import { supabase } from "@/lib/supabase";
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { Suspense } from "react";
 
 export default function Home() {
   // ─── Router ───────────────────────────────────────────────────────────────────
