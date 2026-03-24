@@ -199,6 +199,7 @@ interface LogContext {
   eventType?: string;
   authenticatedUser?: string;
   requestedUser?: string;
+  referrerId?: string;
 }
 
 /**
