@@ -2,26 +2,235 @@
 @tailwind components;
 @tailwind utilities;
 
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+
+/* ─── CSS Variables ─────────────────────────────────────────────────────── */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f9fafb;
+  --foreground: #111827;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+.dark {
+  --background: #020617;
+  --foreground: #e2e8f0;
+}
+
+/* ─── Light mode glass gradient background ──────────────────────────────── */
+.light-gradient-bg {
+  background: linear-gradient(135deg, #f5f3ff 0%, #fafafe 50%, #f0f4ff 100%);
+}
+
+/* ─── Dark mode glass gradient background ───────────────────────────────── */
+.dark-gradient-bg {
+  background: linear-gradient(to bottom right, #000000, #0f0f1a, #2d1b69);
+}
+
+/* ─── Base ──────────────────────────────────────────────────────────────── */
+html {
+  height: 100%;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
+/* ─── Global transition for theme switching ─────────────────────────────── */
+*,
+*::before,
+*::after {
+  transition-property: color, background-color, border-color, box-shadow;
+  transition-timing-function: ease-in-out;
+  transition-duration: 200ms;
+}
+
+/* Exclude transitions that shouldn't animate on theme switch */
+.no-transition,
+.no-transition * {
+  transition: none !important;
+}
+
+/* ─── Sidebar custom scrollbar ──────────────────────────────────────────── */
+.sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #e5e7eb transparent;
+}
+
+.dark .sidebar-scroll {
+  scrollbar-color: #334155 transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar {
+  width: 3px;
+}
+
+.sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 999px;
+}
+
+.dark .sidebar-scroll::-webkit-scrollbar-thumb {
+  background: #334155;
+}
+
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #d1d5db;
+}
+
+.dark .sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ─── Main content scrollbar ────────────────────────────────────────────── */
+.main-scroll::-webkit-scrollbar {
+  width: 5px;
+}
+
+.main-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.main-scroll::-webkit-scrollbar-thumb {
+  background: #e5e7eb;
+  border-radius: 999px;
+}
+
+.dark .main-scroll::-webkit-scrollbar-thumb {
+  background: #1e293b;
+}
+
+/* ─── Focus ring override ───────────────────────────────────────────────── */
+*:focus-visible {
+  outline: 2px solid #7c3aed;
+  outline-offset: 2px;
+}
+
+/* ─── Select element fix (arrow) ────────────────────────────────────────── */
+select {
+  background-image: none;
+}
+
+/* ─── Utilities ─────────────────────────────────────────────────────────── */
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+
+  /* Gradient text shorthand */
+  .text-gradient-purple {
+    background: linear-gradient(to right, #7c3aed, #a78bfa);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  /* Glass card - Light mode */
+  .glass {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+  }
+
+  /* Glass card - Dark mode */
+  .dark .glass {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Glass sidebar - Light mode */
+  .glass-sidebar {
+    background: rgba(255, 255, 255, 0.6);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.07);
+  }
+
+  /* Glass sidebar - Dark mode */
+  .dark .glass-sidebar {
+    background: rgba(0, 0, 0, 0.4);
+    backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  /* Smooth transition utility */
+  .smooth-transition {
+    transition: all 300ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Sidebar width transition */
+  .sidebar-width {
+    transition: width 300ms ease-in-out;
+  }
+}
+
+/* ─── Keyframes ─────────────────────────────────────────────────────────── */
+@keyframes fadeSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes modalSlide {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.animate-fade-slide-up {
+  animation: fadeSlideUp 0.4s ease-out forwards;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out forwards;
+}
+
+.animate-scale-in {
+  animation: scaleIn 0.2s ease-out forwards;
+}
+
+.animate-modal-slide {
+  animation: modalSlide 0.2s ease-out forwards;
 }

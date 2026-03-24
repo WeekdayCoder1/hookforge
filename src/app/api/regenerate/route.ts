@@ -1,20 +1,19 @@
 /**
- * POST /api/generate
- * Generate AI hooks for a given topic
- * 
+ * POST /api/regenerate
+ * Regenerate different AI hooks for the same topic
+ *
  * SECURITY:
- * - Rate limited (10 requests/minute per IP + user)
+ * - Rate limited (15 requests/minute per IP + user)
  * - Input validation with Zod
  * - Auth required (Bearer token)
  * - Server-side credit checks
- * - Safe credit deduction with retry logic
- * - No secrets exposed in responses
+ * - Safe credit deduction with atomic operations
  */
 
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { CREDIT_COSTS, checkAndResetCredits, deductCredits } from "@/lib/credits";
-import { generateRequestSchema, validateInput } from "@/lib/validation";
+import { regenerateRequestSchema, validateInput } from "@/lib/validation";
 import { applyRateLimit, RATE_LIMITS, getClientIp } from "@/lib/rate-limit";
 import {
   errorResponse,
@@ -33,7 +32,6 @@ import { getEnv } from "@/lib/env";
 
 const env = getEnv();
 
-// Initialize admin client (service role only - never expose to client)
 const supabaseAdmin = createClient(
   env.NEXT_PUBLIC_SUPABASE_URL,
   env.SUPABASE_SERVICE_ROLE_KEY,
@@ -58,30 +56,29 @@ export async function POST(req: NextRequest) {
     const token = authHeader?.startsWith("Bearer ") ? authHeader.substring(7) : null;
 
     if (!token) {
-      const error = unauthorizedError("Authentication required. Send Bearer token in Authorization header.");
-      logSecurityEvent("missing_auth", { endpoint: "/api/generate", ip });
+      const error = unauthorizedError("Authentication required");
+      logSecurityEvent("missing_auth", { endpoint: "/api/regenerate", ip });
       return errorResponse(error);
     }
 
-    // Validate token with Supabase service role
     try {
       const { data } = await supabaseAdmin.auth.getUser(token);
       if (!data.user?.id) {
-        const error = unauthorizedError("Invalid or expired authentication token");
-        logSecurityEvent("invalid_token", { endpoint: "/api/generate", ip });
+        const error = unauthorizedError("Invalid authentication token");
+        logSecurityEvent("invalid_token", { endpoint: "/api/regenerate", ip });
         return errorResponse(error);
       }
       userId = data.user.id;
     } catch (error) {
       const apiError = unauthorizedError("Authentication failed");
-      logSecurityEvent("auth_error", { endpoint: "/api/generate", ip, details: { error: (error as Error).message } });
+      logSecurityEvent("auth_error", { endpoint: "/api/regenerate", ip });
       return errorResponse(apiError);
     }
 
-    // Apply rate limiting (now that we have userId)
-    const rateLimitCheck = await applyRateLimit(req, userId, RATE_LIMITS.GENERATE);
+    // Apply rate limiting
+    const rateLimitCheck = await applyRateLimit(req, userId, RATE_LIMITS.REGENERATE);
     if (rateLimitCheck.response) {
-      logSecurityEvent("rate_limit_exceeded", { endpoint: "/api/generate", ip, userId });
+      logSecurityEvent("rate_limit_exceeded", { endpoint: "/api/regenerate", ip, userId });
       return rateLimitCheck.response;
     }
 
@@ -91,42 +88,39 @@ export async function POST(req: NextRequest) {
       requestBody = await req.json();
     } catch {
       const error = validationError("Invalid JSON in request body");
-      logError(error, { endpoint: "/api/generate", userId, ip });
+      logError(error, { endpoint: "/api/regenerate", userId, ip });
       return errorResponse(error);
     }
 
-    // Validate input schema
-    const validation = validateInput(generateRequestSchema, requestBody);
+    const validation = validateInput(regenerateRequestSchema, requestBody);
     if (!validation.success) {
       const error = validationError(`Validation failed: ${validation.error}`);
-      logError(error, { endpoint: "/api/generate", userId, ip });
+      logError(error, { endpoint: "/api/regenerate", userId, ip });
       return errorResponse(error);
     }
 
-    const { topic, platform, niche, tone }: typeof validation.data = validation.data;
+    const { topic, platform, niche, tone } = validation.data;
 
     // ─── CREDIT CHECK ─────────────────────────────────────────────────────
-    const requiredCredits = CREDIT_COSTS.generate; // 3 credits
+    const requiredCredits = CREDIT_COSTS.regenerate; // 1 credit
     let userCredits = 0;
-    let userPlan = "free";
 
     try {
       const userWithCredits = await checkAndResetCredits(userId);
       userCredits = userWithCredits.credits_remaining;
-      userPlan = userWithCredits.plan || "free";
 
       if (userCredits < requiredCredits) {
         const error = insufficientCreditsError(requiredCredits, userCredits);
-        logError(error, { endpoint: "/api/generate", userId, ip });
+        logError(error, { endpoint: "/api/regenerate", userId, ip });
         return errorResponse(error);
       }
     } catch (error) {
       const apiError = internalError("Failed to check credits");
-      logError(apiError, { endpoint: "/api/generate", userId, ip });
+      logError(apiError, { endpoint: "/api/regenerate", userId, ip });
       return errorResponse(apiError);
     }
 
-    // ─── AI GENERATION ────────────────────────────────────────────────────
+    // ─── AI GENERATION (WITH VARIATION) ───────────────────────────────────
     const platformKey = platform.toLowerCase();
     const platformInstructions: Record<string, string> = {
       youtube: "Style: Strong curiosity gap. Bold, high-retention claims. Fast-paced energy. Optimised for YouTube Shorts.",
@@ -137,14 +131,16 @@ export async function POST(req: NextRequest) {
       linkedin: "Style: Professional and insightful. Authority-building. Data or lesson-driven. Optimised for LinkedIn.",
     };
 
-    const platformInstruction = platformInstructions[platformKey] || "Style: High curiosity, bold, and scroll-stopping for any platform.";
+    const platformInstruction =
+      platformInstructions[platformKey] ||
+      "Style: High curiosity, bold, and scroll-stopping for any platform.";
 
     const prompt = `You are a viral short-form content strategist.
-Generate 5 scroll-stopping hooks about "${topic}".
+Generate 5 completely NEW and DIFFERENT scroll-stopping hooks about "${topic}".
 Niche: ${niche}
 Tone: ${tone}
 ${platformInstruction}
-Rules: Maximum 12 words per hook. Pattern interrupt style. No emojis. No generic phrases. Make them feel dangerous, controversial or irresistible.
+Rules: Maximum 12 words per hook. Pattern interrupt style. No emojis. No generic phrases. Make them feel dangerous, controversial or irresistible. These MUST be DIFFERENT from previous hooks.
 Return only hooks separated by new lines. No numbering, no explanations.`;
 
     let hooks: string[] = [];
@@ -152,13 +148,13 @@ Return only hooks separated by new lines. No numbering, no explanations.`;
       const aiResponse = await fetch("https://openrouter.ai/api/v1/chat/completions", {
         method: "POST",
         headers: {
-          "Authorization": `Bearer ${env.OPENROUTER_API_KEY}`,
+          Authorization: `Bearer ${env.OPENROUTER_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           model: "openai/gpt-3.5-turbo",
           messages: [{ role: "user", content: prompt }],
-          temperature: 0.8,
+          temperature: 0.95,
         }),
       });
 
@@ -179,35 +175,34 @@ Return only hooks separated by new lines. No numbering, no explanations.`;
         throw new Error("AI returned empty hooks");
       }
     } catch (error) {
-      const apiError = internalError("Failed to generate hooks. Please try again.");
-      logError(apiError, { endpoint: "/api/generate", userId, ip });
+      const apiError = internalError("Failed to regenerate hooks. Please try again.");
+      logError(apiError, { endpoint: "/api/regenerate", userId, ip });
       return errorResponse(apiError);
     }
 
-    // ─── CREDIT DEDUCTION (ATOMIC WITH VALIDATION) ─────────────────────────
+    // ─── CREDIT DEDUCTION ─────────────────────────────────────────────────
     let newCredits = userCredits;
     try {
       newCredits = await deductCredits(userId, requiredCredits);
     } catch (error) {
-      console.error(`[GENERATE] Credit deduction failed for user ${userId}`, error);
-      const apiError = internalError("Failed to process transaction. Generation cancelled.");
-      logError(apiError, { endpoint: "/api/generate", userId, ip });
+      const apiError = internalError("Failed to process transaction. Regeneration cancelled.");
+      logError(apiError, { endpoint: "/api/regenerate", userId, ip });
       return errorResponse(apiError);
     }
 
     // ─── SAVE TO HISTORY (NON-CRITICAL) ──────────────────────────────────
     try {
-      const historyData = {
-        user_id: userId,
-        topic,
-        platform,
-        hooks: JSON.stringify(hooks),
-        created_at: new Date().toISOString(),
-      };
-
-      await supabaseAdmin.from("generated_hooks").insert(historyData).select();
-    } catch (error) {
-      // Fallback to hook_history
+      await supabaseAdmin
+        .from("generated_hooks")
+        .insert({
+          user_id: userId,
+          topic,
+          platform,
+          hooks: JSON.stringify(hooks),
+          created_at: new Date().toISOString(),
+        })
+        .select();
+    } catch {
       try {
         await supabaseAdmin.from("hook_history").insert({
           user_id: userId,
@@ -217,24 +212,24 @@ Return only hooks separated by new lines. No numbering, no explanations.`;
           created_at: new Date().toISOString(),
         });
       } catch {
-        // Log but don't fail - hooks already generated and credits deducted
-        console.warn(`[HISTORY] Failed to save for user ${userId}`);
+        console.warn(`[HISTORY] Failed to save regenerate for user ${userId}`);
       }
     }
 
     // ─── SUCCESS RESPONSE ─────────────────────────────────────────────────
     const duration = Date.now() - startTime;
-    console.log(`[SUCCESS] /api/generate user=${userId} duration=${duration}ms credits=${newCredits}`);
+    console.log(
+      `[SUCCESS] /api/regenerate user=${userId} duration=${duration}ms credits=${newCredits}`
+    );
 
     return successResponse({
       hooks,
       credits_remaining: newCredits,
-      plan: userPlan,
     });
   } catch (error) {
     const duration = Date.now() - startTime;
     const apiError = toApiError(error, "An unexpected error occurred");
-    logError(apiError, { endpoint: "/api/generate", userId: userId || undefined, ip, duration });
+    logError(apiError, { endpoint: "/api/regenerate", userId, ip, duration });
     return errorResponse(apiError);
   }
 }
