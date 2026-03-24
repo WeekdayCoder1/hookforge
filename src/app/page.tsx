@@ -307,8 +307,6 @@ if (payload?.hooks && Array.isArray(payload.hooks)) {
           // Sync credits from server response
           if (typeof data.credits_remaining === "number") {
             setCreditsRemaining(data.credits_remaining);
-          } else {
-            setCreditsRemaining(prev => Math.max(0, prev - 3));
           }
 
           // Reload history from generated_hooks
